@@ -1,13 +1,12 @@
 VERSION 0.6
 
-LARAVELAPP:
+RUSTAPP:
 	COMMAND
     ARG service='sample'
     ARG env='prod'
     ARG dir="./$service/environments/$env"
     ARG file="$dir/app-template.yaml"
     ARG version=0.1
-    ARG httpsDomain1=''
     ARG deploymentReplicas=1
     ARG CRD_KIND='CustomAppTemplate'
 	ARG CRD_GROUP='app.resourcegroup.io'
@@ -20,9 +19,8 @@ spec:
   environment: '${env}'
   deploymentReplicas: ${deploymentReplicas}
   imageVersion: '${version}'
-  httpsDomain1: '${httpsDomain1}'
-  letEncryptEmail: 'ayomide@ceedlab.co'
-  configsToUse: 'php-default,cert-manager-http,cert-manager-http/issuer-1,cron,redis,queue-workers,queue-workers-high'
+  letEncryptEmail: 'drayfocus@gmail.com'
+  configsToUse: 'rust-default'
 "
 	RUN mkdir -p $dir
   RUN echo "$OUTPUT" > "$file"

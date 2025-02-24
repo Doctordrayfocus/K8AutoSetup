@@ -4,6 +4,14 @@ IMPORT ./templates/nodejs/kubernetes AS nodejs_kubernetes_engine
 IMPORT ./templates/nodejs/docker AS nodejs_docker_engine
 IMPORT ./templates/php/kubernetes AS php_kubernetes_engine
 IMPORT ./templates/php/docker AS php_docker_engine
+IMPORT ./templates/python/kubernetes AS python_kubernetes_engine
+IMPORT ./templates/python/docker AS python_docker_engine
+IMPORT ./templates/java/kubernetes AS java_kubernetes_engine
+IMPORT ./templates/java/docker AS java_docker_engine
+IMPORT ./templates/bunjs/kubernetes AS bunjs_kubernetes_engine
+IMPORT ./templates/bunjs/docker AS bunjs_docker_engine
+IMPORT ./templates/rust/kubernetes AS rust_kubernetes_engine
+IMPORT ./templates/rust/docker AS rust_docker_engine
 WORKDIR /build-arena
 
 install:
@@ -14,33 +22,44 @@ install:
 	ARG apptype='nodejs'
 
 	WORKDIR /setup-arena
-	
+
 	RUN mkdir $service $service/app
 
 	COPY templates $service/templates
 	COPY Earthfile $service
 
-	FOR --sep="," env IN "$envs"	
+	FOR --sep="," env IN "$envs"
 		ENV dir="./$service/environments/$env"
 		RUN echo "Creating environment $env"
-		
-		IF [ "$apptype" = "nodejs" ]
-			RUN mkdir -p $dir
-			DO nodejs_kubernetes_engine+DEPLOYMENT --service=$service --env=$env --dir=$dir --version=$version --docker_registry=$docker_registry
-			DO nodejs_kubernetes_engine+SERVICE --service=$service --env=$env --dir=$dir
-			DO nodejs_kubernetes_engine+NAMESPACE --service=$service --env=$env --dir=$dir
-		END
 
-		IF [ "$apptype" = "php" ]
-			RUN mkdir -p $dir $dir/extras-$service
-			DO php_kubernetes_engine+LARAVELAPP --service=$service --env=$env --version=$version 
-			DO php_kubernetes_engine+CONFIGMAP --service=$service --env=$env 
-			DO php_kubernetes_engine+SECRETS --service=$service --env=$env 
-		END
-
+		RUN mkdir -p $dir $dir/extras-$service
 	END
 
 	SAVE ARTIFACT $service AS LOCAL ${service}
+
+setup:
+
+	ARG envs='dev'
+
+	ARG apptype='nodejs'
+
+	RUN mkdir app
+
+	WORKDIR app
+
+	RUN apk update
+
+	RUN apk add git
+
+	## Enter repo_url.
+
+	RUN git clone https://{repo_url}.git .
+
+	RUN git checkout ${envs}
+
+	RUN rm -rf package-lock.json composer.lock
+
+	SAVE ARTIFACT * AS LOCAL templates/${apptype}/docker/app/
 
 build:
 	ARG version='0.1'
@@ -50,73 +69,117 @@ build:
 	ARG node_env="developement"
 	ARG apptype='nodejs'
 
-	IF [ "$apptype" = "nodejs" ]
-		BUILD nodejs_docker_engine+node-app --version=$version --docker_registry=$docker_registry --service=$service --node_env=$node_env
+	IF [ "$apptype" = "bunjs" ]
+		BUILD bunjs_docker_engine+bunjs-server --version=$version --docker_registry=$docker_registry --service=$service --node_env=$node_env
 	END
-	IF [ "$apptype" = "php" ]
-		BUILD php_docker_engine+fpm-server --version=$version --docker_registry=$docker_registry --service=$service 
-		BUILD php_docker_engine+web-server --version=$version --docker_registry=$docker_registry --service=$service
-		BUILD php_docker_engine+cron --version=$version --docker_registry=$docker_registry --service=$service 
-	END
-	
-	## Update deployment.yaml with latest versions
-	FOR --sep="," env IN "$envs"	
-		IF [ "$apptype" = "nodejs" ]
-			DO nodejs_kubernetes_engine+DEPLOYMENT --service=$service --env=$env --version=$version --docker_registry=$docker_registry
-			SAVE ARTIFACT $service/environments/$env/deployment.yaml AS LOCAL ${service}/environments/$env/deployment.yaml 
-		END
 
-		IF [ "$apptype" = "php" ]
-			DO php_kubernetes_engine+LARAVELAPP --service=$service --version=$version 
-			SAVE ARTIFACT $service/environments/$env/app-template.yaml AS LOCAL ${service}/environments/$env/app-template.yaml
-		END
+	IF [ "$apptype" = "java" ]
+		BUILD java_docker_engine+java-server --version=$version --docker_registry=$docker_registry --service=$service
+	END
+
+	IF [ "$apptype" = "nodejs" ]
+		BUILD nodejs_docker_engine+nodejs-server --version=$version --docker_registry=$docker_registry --service=$service --node_env=$node_env
+	END
+
+	IF [ "$apptype" = "php" ]
+		BUILD php_docker_engine+fpm-server --version=$version --docker_registry=$docker_registry --service=$service
+		BUILD php_docker_engine+web-server --version=$version --docker_registry=$docker_registry --service=$service
+	END
+
+	IF [ "$apptype" = "python" ]
+		BUILD python_docker_engine+python-server --version=$version --docker_registry=$docker_registry --service=$service
+	END
+
+	IF [ "$apptype" = "rust" ]
+		BUILD rust_docker_engine+rust-server --version=$version --docker_registry=$docker_registry --service=$service
 	END
 
 
 deploy:
-	FROM alpine/doctl:1.22.2
+	FROM mcr.microsoft.com/azure-cli:2.9.0
+
 	# setup kubectl
-	ARG env='dev'
-	ARG DIGITALOCEAN_ACCESS_TOKEN=""
+	ARG envs='dev'
+	ARG AZURE_CLIENT_ID
+	ARG AZURE_CLIENT_SECRET
+	ARG AZURE_TENANT_ID
+	ARG AZURE_SUBSCRIPTION_ID
+	ARG AZURE_RESOURCE_GROUP
+	ARG AZURE_KUBERNETES_CLUSTER_NAME
+	ARG CRD_CONTROLLER_NAME
+	ARG CRD_KIND
+	ARG CRD_GROUP
 	ARG apptype='nodejs'
+	ARG service='service-name'
+	ARG version=""
 
-	COPY environments environments
+	COPY ./environments ${service}/environments
 
-	RUN kubectl version --client
-	# doctl authenticating
-    RUN doctl auth init --access-token ${DIGITALOCEAN_ACCESS_TOKEN}
+	# Install necessary tools using apk package manager
+	RUN apk update && \
+    apk add --no-cache wget bash
 
-	# save Kube config
-	RUN doctl kubernetes cluster kubeconfig save cluster-name
-	RUN kubectl config get-contexts	
+	# Step to install kubectl
+    RUN wget -O /usr/local/bin/kubectl https://dl.k8s.io/release/$(wget -qO- https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl && \
+        chmod +x /usr/local/bin/kubectl && \
+        kubectl version --client
 
-	## deploy kubernetes configs
+	# Step to log in to Azure
+	RUN az login --service-principal -u ${AZURE_CLIENT_ID} -p ${AZURE_CLIENT_SECRET} --tenant ${AZURE_TENANT_ID} && \
+        az account set --subscription ${AZURE_SUBSCRIPTION_ID}
+
+	# Step to activate a Kubernetes cluster
+	RUN az aks get-credentials --resource-group ${AZURE_RESOURCE_GROUP} --name ${AZURE_KUBERNETES_CLUSTER_NAME}
+
+	## Update deployment.yaml, configmap and secrets with latest versions
+
+	IF [ "$apptype" = "bunjs" ]
+		DO bunjs_kubernetes_engine+BUNJSAPP  --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO bunjs_kubernetes_engine+CONFIGMAP
+		DO bunjs_kubernetes_engine+SECRETS
+	END
+
+	IF [ "$apptype" = "java" ]
+		DO java_kubernetes_engine+JAVAAPP --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO java_kubernetes_engine+CONFIGMAP
+		DO java_kubernetes_engine+SECRETS
+	END
+
 	IF [ "$apptype" = "nodejs" ]
-		RUN kubectl apply -f environments/${env}/namespace.yaml
-		RUN kubectl apply -f environments/${env}
+		DO nodejs_kubernetes_engine+NODEJSAPP --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO nodejs_kubernetes_engine+CONFIGMAP
+		DO nodejs_kubernetes_engine+SECRETS
 	END
 
 	IF [ "$apptype" = "php" ]
-		RUN kubectl apply -f environments/${env}/app-template.yaml
-		RUN kubectl cp environments/${env}/extras-$service $(kubectl get pod -l app=apptemplate-controller -o jsonpath="{.items[0].metadata.name}"):/usr/src/app/configs
+		DO php_kubernetes_engine+LARAVELAPP --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO php_kubernetes_engine+CONFIGMAP
+		DO php_kubernetes_engine+SECRETS
 	END
-	
 
-auto-deploy:
-	ARG version='0.1'
-	ARG docker_registry='drayfocus'
-	ARG service='sample'
-	ARG env='dev'
-	ARG apptype='nodejs'
+	IF [ "$apptype" = "python" ]
+		DO python_kubernetes_engine+PYTHONAPP --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO python_kubernetes_engine+CONFIGMAP
+		DO python_kubernetes_engine+SECRETS
+	END
 
-	# Build and push docker images
-	BUILD +build
-
-	# Deploy to kubernetes
-	BUILD +deploy
-
-	
+	IF [ "$apptype" = "rust" ]
+		DO rust_kubernetes_engine+RUSTAPP --CRD_KIND=$CRD_KIND --CRD_GROUP=$CRD_GROUP  --service=$service --version=$version --env=$envs --deploymentReplicas=1
+		DO rust_kubernetes_engine+CONFIGMAP
+		DO rust_kubernetes_engine+SECRETS
+	END
 
 
+	## deploy namespace
+    RUN kubectl apply -f $service/environments/${envs}/namespace.yaml
 
+	# deploy resources and perform operations after deployment. Replace CRD_CONTROLLER_NAME with your deployment name
+	RUN kubectl cp $service/environments/${envs}/extras-$service $(kubectl get pod -l app=${CRD_CONTROLLER_NAME} -o jsonpath="{.items[0].metadata.name}"):/usr/src/app/configs
+	RUN kubectl apply -f $service/environments/${envs}
 
+	# Waiting for pods to build
+
+	RUN sleep 20s
+
+	# Run post-deployment actions below. Example below.
+	# RUN kubectl exec -n ${envs}-${service} deploy/${service}-fpm  -- echo "Post deployment actions completed"

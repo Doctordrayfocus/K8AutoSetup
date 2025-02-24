@@ -1,73 +1,69 @@
 VERSION 0.6
 
-DEPLOYMENT:
+NODEJSAPP:
 	COMMAND
     ARG service='sample'
     ARG env='prod'
     ARG dir="./$service/environments/$env"
-    ARG file="$dir/deployment.yaml"
-	ARG version='0.1'
-	ARG docker_registry='drayfocus/earthly-sample' 
-
-	ARG OUTPUT="apiVersion: apps/v1
-kind: Deployment
+    ARG file="$dir/app-template.yaml"
+	ARG version=0.1
+	ARG httpsDomain1=''
+	ARG httpsDomain2=''
+	ARG CRD_KIND='CustomAppTemplate'
+	ARG CRD_GROUP='app.resourcegroup.io'
+	ARG OUTPUT="apiVersion: ${CRD_GROUP}/v1
+kind: ${CRD_KIND}
 metadata:
-  name: ${service}-deployment
-  namespace: ${env}-$service
-  labels:
-    app: $service
+  name: ${service}
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: $service
-  template:
-    metadata:
-      labels:
-        app: $service
-    spec:
-      containers:
-      - name: ${service}-deployment
-        image: ${docker_registry}/${service}_node_app:v${version}
-        ports:
-        - containerPort: 3000
+  serviceName: '${service}'
+  environment: '${env}'
+  deploymentReplicas: 1
+  imageVersion: '${version}'
+  letEncryptEmail: 'drayfocus@gmail.com'
+  configsToUse: 'node-with-config'
+  httpsDomain1: '${httpsDomain1}'
+  httpsDomain2: '${httpsDomain2}'
 "
 	RUN mkdir -p $dir
     RUN echo "$OUTPUT" > "$file"
 
-SERVICE:
+
+CONFIGMAP:
 	COMMAND
     ARG service='sample'
     ARG env='prod'
-    ARG dir="./$service/environments/$env"
-    ARG file="$dir/service.yaml"
+    ARG dirExtra="./$service/environments/$env/extras-$service"
+    ARG file="$dirExtra/configmap.yaml"
 	ARG OUTPUT="apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
-  name: $service-service
-  namespace: $env-$service
-spec:
-  selector:
-    app: $service
-  type: LoadBalancer
-  ports:
-  - protocol: TCP
-    port: 5000
-    targetPort: 3000
-    nodePort: 31110
+  name: ${service}
+  namespace: ${env}-${service}
+data:
+  APP_NAME: 'App name'
+  APP_ENV: 'production'
+  APP_DEBUG: 'false'
 "
-    RUN echo "$OUTPUT" > "$file"
+	RUN mkdir -p $dirExtra
+  RUN echo "$OUTPUT" > "$file"
 
-NAMESPACE:
+SECRETS:
 	COMMAND
     ARG service='sample'
     ARG env='prod'
-    ARG dir="./$service/environments/$env"
-    ARG file="$dir/namespace.yaml"
-
-    ARG OUTPUT="apiVersion: v1
-kind: Namespace
+    ARG dirExtra="./$service/environments/$env/extras-$service"
+    ARG file="$dirExtra/secrets.yaml"
+	ARG OUTPUT="apiVersion: v1
+kind: Secret
 metadata:
-  name: $env-$service
+  name: ${service}
+  namespace: ${env}-${service}
+type: Opaque
+stringData:
+  APP_KEY: ''
+  DB_USERNAME: ''
+  DB_PASSWORD: ''
 "
-    RUN echo "$OUTPUT" > "$file"
+	RUN mkdir -p $dirExtra
+  RUN echo "$OUTPUT" > "$file"
