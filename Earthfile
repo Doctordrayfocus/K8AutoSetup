@@ -33,6 +33,8 @@ install:
 		RUN echo "Creating environment $env"
 
 		RUN mkdir -p $dir $dir/extras-$service
+		# Add gitkeep file
+		RUN touch $dir/extras-$service/.gitkeep
 	END
 
 	SAVE ARTIFACT $service AS LOCAL ${service}
