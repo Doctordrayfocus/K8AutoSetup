@@ -34,7 +34,7 @@ install:
 
 		RUN mkdir -p $dir $dir/extras-$service
 		# Add gitkeep file
-		RUN touch $dir/extras-$service/.gitkeep
+		RUN touch $dir/extras-$service/gitkeep
 	END
 
 	SAVE ARTIFACT $service AS LOCAL ${service}
@@ -118,7 +118,7 @@ deploy:
 	COPY ./environments ${service}/environments
 
 	# Remove .gitkeep file if it exists
-	RUN rm -f ${service}/environments/.gitkeep
+	RUN rm -f ${service}/environments/gitkeep
 
 	# Install necessary tools using apk package manager
 	RUN apk update && \
