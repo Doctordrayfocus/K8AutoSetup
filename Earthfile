@@ -115,9 +115,10 @@ deploy:
 	ARG service='service-name'
 	ARG version=""
 
-	RUN mkdir ${service}/environments
-
 	COPY ./environments ${service}/environments
+
+	# Remove .gitkeep file if it exists
+	RUN rm -f ${service}/environments/.gitkeep
 
 	# Install necessary tools using apk package manager
 	RUN apk update && \
