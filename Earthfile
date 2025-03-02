@@ -174,9 +174,6 @@ deploy:
 	END
 
 
-	## deploy namespace
-    RUN kubectl apply -f $service/environments/${envs}/namespace.yaml
-
 	# deploy resources and perform operations after deployment. Replace CRD_CONTROLLER_NAME with your deployment name
 	RUN kubectl cp $service/environments/${envs}/extras-$service $(kubectl get pod -l app=${CRD_CONTROLLER_NAME} -o jsonpath="{.items[0].metadata.name}"):/usr/src/app/configs
 	RUN kubectl apply -f $service/environments/${envs}
