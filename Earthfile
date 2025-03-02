@@ -113,6 +113,8 @@ deploy:
 	ARG service='service-name'
 	ARG version=""
 
+	RUN mkdir ${service}/environments
+
 	COPY ./environments ${service}/environments
 
 	# Install necessary tools using apk package manager
