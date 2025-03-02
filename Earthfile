@@ -115,7 +115,7 @@ deploy:
 	ARG service='service-name'
 	ARG version=""
 
-	COPY ./environments ${service}/environments
+	RUN mkdir -p ${service}/environments
 
 	# Remove .gitkeep file if it exists
 	RUN rm -f ${service}/environments/gitkeep
