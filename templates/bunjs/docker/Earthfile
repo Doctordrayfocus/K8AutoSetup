@@ -34,7 +34,7 @@ bunjs-server:
 
 
 websocket:
-FROM oven/bun:1.0.5-alpine
+    FROM oven/bun:1.0.5-alpine
 
 	ARG version='0.1'
 	ARG docker_registry='drayfocus/earthly-sample'
